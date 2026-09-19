@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Integrity Checker & Hash Verifier</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        },
+                        darkbg: '#0f172a',
+                        cardbg: '#1e293b',
+                        borderbg: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CryptoJS CDN for MD5 & SHA-1 fallback and HMAC -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #f8fafc;
+            --bg-header: #ffffff;
+            --bg-card: #ffffff;
+            --bg-card-subtle: #f1f5f9;
+            --bg-input: #ffffff;
+            --bg-code: #f1f5f9;
+            --border-main: #e2e8f0;
+            --border-subtle: #cbd5e1;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --text-heading: #0f172a;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .dark {
+            --bg-main: #0f172a;
+            --bg-header: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-subtle: #0f172a;
+            --bg-input: #0f172a;
+            --bg-code: #020617;
+            --border-main: #334155;
+            --border-subtle: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --text-heading: #ffffff;
+            --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        .theme-card {
+            background-color: var(--bg-card);
+            border-color: var(--border-main);
+            box-shadow: var(--card-shadow);
+        }
+
+        .theme-card-subtle {
+            background-color: var(--bg-card-subtle);
+            border-color: var(--border-main);
+        }
+
+        .theme-header {
+            background-color: var(--bg-header);
+            border-color: var(--border-main);
+        }
+
+        .theme-input {
+            background-color: var(--bg-input);
+            border-color: var(--border-main);
+            color: var(--text-primary);
+        }
+
+        .theme-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .theme-code {
+            background-color: var(--bg-code);
+            border-color: var(--border-main);
+        }
+
+        .theme-text-heading {
+            color: var(--text-heading);
+        }
+
+        .theme-text-secondary {
+            color: var(--text-secondary);
+        }
+
+        .theme-text-muted {
+            color: var(--text-muted);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: var(--bg-card-subtle);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: var(--border-main);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-darkbg text-slate-800 dark:text-slate-100 min-h-screen font-sans flex flex-col antialiased transition-colors duration-200">
+
+    <!-- Header Bar -->
+    <header class="theme-header border-b sticky top-0 z-30 shadow-sm transition-colors">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-none theme-text-heading tracking-tight">IntegrityGuard</h1>
+                    <span class="text-xs theme-text-muted font-medium">File Integrity & Hash Verification Suite</span>
+                </div>
+            </div>
+
+            <!-- Global Status Indicator & Theme Toggle -->
+            <div class="flex items-center space-x-3 sm:space-x-4">
+                <div class="hidden sm:flex items-center space-x-2 text-xs theme-card-subtle border px-3 py-1.5 rounded-lg theme-text-secondary">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Local Sandbox Mode</span>
+                </div>
+                <button id="themeToggleBtn" onclick="toggleTheme()" class="p-2.5 rounded-lg bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-amber-400 hover:bg-slate-300 dark:hover:bg-slate-700 transition" title="Toggle Theme">
+                    <i class="fa-solid fa-sun text-base"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow w-full flex flex-col space-y-6">
+
+        <!-- Navigation Tabs -->
+        <nav class="flex space-x-2 border-b theme-border pb-2 overflow-x-auto custom-scrollbar">
+            <button onclick="switchTab('fileVerifier')" id="tab-fileVerifier" class="nav-tab active flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition bg-emerald-600/10 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                <i class="fa-solid fa-file-shield text-base"></i>
+                <span>File Verifier</span>
+                <span id="scanCountBadge" class="ml-1.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 text-xs px-2 py-0.5 rounded-full hidden">0</span>
+            </button>
+
+            <button onclick="switchTab('comparator')" id="tab-comparator" class="nav-tab flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition theme-text-muted hover:text-emerald-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 border border-transparent">
+                <i class="fa-solid fa-code-compare text-base"></i>
+                <span>Direct Comparator</span>
+            </button>
+
+            <button onclick="switchTab('trustedDb')" id="tab-trustedDb" class="nav-tab flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition theme-text-muted hover:text-emerald-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 border border-transparent">
+                <i class="fa-solid fa-database text-base"></i>
+                <span>Trusted Database</span>
+                <span id="dbCountBadge" class="ml-1.5 theme-card-subtle theme-text-secondary text-xs px-2 py-0.5 rounded-full border theme-border">0</span>
+            </button>
+
+            <button onclick="switchTab('textHasher')" id="tab-textHasher" class="nav-tab flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition theme-text-muted hover:text-emerald-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 border border-transparent">
+                <i class="fa-solid fa-key text-base"></i>
+                <span>Text / String Hasher</span>
+            </button>
+
+            <button onclick="switchTab('auditLogs')" id="tab-auditLogs" class="nav-tab flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition theme-text-muted hover:text-emerald-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 border border-transparent">
+                <i class="fa-solid fa-clock-rotate-left text-base"></i>
+                <span>Audit Logs & Reports</span>
+            </button>
+        </nav>
+
+        <!-- TAB 1: FILE VERIFIER -->
+        <div id="view-fileVerifier" class="tab-content space-y-6">
+            
+            <!-- Controls & Expected Hash Bar -->
+            <div class="theme-card border rounded-xl p-4 sm:p-5">
+                <div class="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
+                    <!-- Expected Checksum Input -->
+                    <div class="flex-grow">
+                        <label class="block text-xs font-semibold theme-text-muted uppercase tracking-wider mb-1.5">
+                            <i class="fa-solid fa-bullseye text-emerald-500 mr-1"></i> Quick Compare Hash (Optional)
+                        </label>
+                        <div class="relative">
+                            <input type="text" id="expectedHashInput" placeholder="Paste official hash (e.g. SHA-256, SHA-512, MD5, SHA-1) to verify files against..." 
+                                class="w-full theme-input border focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-3 pr-24 text-sm font-mono outline-none transition">
+                            <button onclick="clearExpectedHash()" class="absolute right-2 top-2 px-2.5 py-1 text-xs theme-card-subtle hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-muted rounded transition border theme-border">
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Hash Algorithms Selector -->
+                    <div class="flex flex-col space-y-1.5">
+                        <span class="text-xs font-semibold theme-text-muted uppercase tracking-wider">Compute Algorithms</span>
+                        <div class="flex flex-wrap gap-2 text-xs font-medium">
+                            <label class="flex items-center space-x-1.5 theme-input border px-3 py-2 rounded-lg cursor-pointer">
+                                <input type="checkbox" id="algo-sha256" checked class="accent-emerald-500 rounded">
+                                <span>SHA-256</span>
+                            </label>
+                            <label class="flex items-center space-x-1.5 theme-input border px-3 py-2 rounded-lg cursor-pointer">
+                                <input type="checkbox" id="algo-sha512" checked class="accent-emerald-500 rounded">
+                                <span>SHA-512</span>
+                            </label>
+                            <label class="flex items-center space-x-1.5 theme-input border px-3 py-2 rounded-lg cursor-pointer">
+                                <input type="checkbox" id="algo-sha1" checked class="accent-emerald-500 rounded">
+                                <span>SHA-1</span>
+                            </label>
+                            <label class="flex items-center space-x-1.5 theme-input border px-3 py-2 rounded-lg cursor-pointer">
+                                <input type="checkbox" id="algo-md5" checked class="accent-emerald-500 rounded">
+                                <span>MD5</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Drop Area -->
+            <div id="dropZone" onclick="document.getElementById('fileInput').click()" 
+                 class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-slate-100/60 dark:bg-slate-800/40 hover:bg-emerald-500/5 dark:hover:bg-slate-800/80 rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center group relative overflow-hidden">
+                <input type="file" id="fileInput" class="hidden" multiple onchange="handleFileSelect(event)">
+                <div class="w-16 h-16 rounded-2xl theme-card border flex items-center justify-center text-emerald-500 text-2xl group-hover:scale-110 group-hover:border-emerald-500/50 group-hover:bg-emerald-500/10 transition duration-300 mb-4 shadow-sm">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <h3 class="text-base sm:text-lg font-semibold theme-text-heading mb-1">
+                    Drag and drop file(s) here, or <span class="text-emerald-500 hover:underline">browse files</span>
+                </h3>
+                <p class="text-xs sm:text-sm theme-text-muted max-w-md">
+                    Files are processed entirely on your device using stream-chunking. Zero data leaves your computer.
+                </p>
+            </div>
+
+            <!-- Active Scan Results Header -->
+            <div class="flex items-center justify-between pt-2">
+                <h2 class="text-base font-bold theme-text-heading flex items-center space-x-2">
+                    <i class="fa-solid fa-list-check text-emerald-500"></i>
+                    <span>Verification Results</span>
+                </h2>
+                <div class="flex items-center space-x-2">
+                    <button onclick="clearScanResults()" class="px-3 py-1.5 text-xs font-medium theme-text-muted hover:text-rose-500 theme-card rounded-lg border theme-border transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span>Clear All</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active File Cards List -->
+            <div id="fileResultsContainer" class="space-y-4">
+                <!-- Empty State -->
+                <div id="emptyResultsState" class="text-center py-12 theme-card-subtle rounded-xl border theme-border theme-text-muted">
+                    <i class="fa-solid fa-file-circle-question text-4xl mb-3 text-slate-400 dark:text-slate-600"></i>
+                    <p class="text-sm">No files uploaded yet. Select or drop files above to verify integrity.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: DIRECT COMPARATOR -->
+        <div id="view-comparator" class="tab-content hidden space-y-6">
+            <div class="theme-card border rounded-xl p-5 shadow-lg">
+                <h2 class="text-base font-bold theme-text-heading mb-1 flex items-center space-x-2">
+                    <i class="fa-solid fa-code-compare text-emerald-500"></i>
+                    <span>Direct File or Hash Comparator</span>
+                </h2>
+                <p class="text-xs theme-text-muted mb-6">Compare two files directly or check a known checksum against a computed file signature.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Item A -->
+                    <div class="space-y-3 theme-card-subtle p-4 rounded-xl border">
+                        <span class="text-xs font-bold text-emerald-500 uppercase tracking-wider block">Target A (File or Checksum)</span>
+                        <div class="space-y-2">
+                            <input type="file" id="compFileA" onchange="processComparatorItem('A')" class="hidden">
+                            <button onclick="document.getElementById('compFileA').click()" class="w-full py-2 px-3 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-heading text-xs font-medium rounded-lg border transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-file-upload"></i>
+                                <span id="compFileALabel">Select File A</span>
+                            </button>
+                            <div class="text-center text-xs theme-text-muted font-semibold uppercase">or paste hash directly</div>
+                            <textarea id="compHashA" oninput="runDirectComparison()" placeholder="Paste SHA-256 / SHA-512 / MD5 hash..." rows="3" class="w-full theme-input border rounded-lg p-2.5 text-xs font-mono focus:border-emerald-500 outline-none resize-none"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Item B -->
+                    <div class="space-y-3 theme-card-subtle p-4 rounded-xl border">
+                        <span class="text-xs font-bold text-emerald-500 uppercase tracking-wider block">Target B (File or Checksum)</span>
+                        <div class="space-y-2">
+                            <input type="file" id="compFileB" onchange="processComparatorItem('B')" class="hidden">
+                            <button onclick="document.getElementById('compFileB').click()" class="w-full py-2 px-3 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-heading text-xs font-medium rounded-lg border transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-file-upload"></i>
+                                <span id="compFileBLabel">Select File B</span>
+                            </button>
+                            <div class="text-center text-xs theme-text-muted font-semibold uppercase">or paste hash directly</div>
+                            <textarea id="compHashB" oninput="runDirectComparison()" placeholder="Paste SHA-256 / SHA-512 / MD5 hash..." rows="3" class="w-full theme-input border rounded-lg p-2.5 text-xs font-mono focus:border-emerald-500 outline-none resize-none"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparison Result Display Box -->
+                <div id="comparisonResultBox" class="mt-6 p-5 rounded-xl border theme-border theme-card-subtle text-center">
+                    <i class="fa-solid fa-scale-balanced text-3xl theme-text-muted mb-2"></i>
+                    <p class="text-sm theme-text-muted">Enter or select items in Target A and Target B to compare integrity signatures.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: TRUSTED DATABASE -->
+        <div id="view-trustedDb" class="tab-content hidden space-y-6">
+            
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 theme-card p-4 rounded-xl border">
+                <div>
+                    <h2 class="text-base font-bold theme-text-heading flex items-center space-x-2">
+                        <i class="fa-solid fa-database text-emerald-500"></i>
+                        <span>Trusted Hash Repository</span>
+                    </h2>
+                    <p class="text-xs theme-text-muted">Maintain known-good checksums for software releases, ISOs, and firmware.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="openAddHashModal()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white dark:text-slate-950 font-semibold rounded-lg text-xs transition flex items-center space-x-2 shadow-md">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Add New Signature</span>
+                    </button>
+                    <button onclick="exportTrustedDb()" class="px-3 py-2 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-heading font-medium rounded-lg text-xs transition flex items-center space-x-1.5 border">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Export DB</span>
+                    </button>
+                    <label class="px-3 py-2 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-heading font-medium rounded-lg text-xs transition cursor-pointer flex items-center space-x-1.5 border">
+                        <i class="fa-solid fa-upload"></i>
+                        <span>Import DB</span>
+                        <input type="file" id="importDbInput" accept=".json" onchange="importTrustedDb(event)" class="hidden">
+                    </label>
+                </div>
+            </div>
+
+            <!-- Search and Filter Bar -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="relative md:col-span-2">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 theme-text-muted text-xs"></i>
+                    <input type="text" id="dbSearchInput" oninput="renderTrustedDbTable()" placeholder="Search software name, vendor, version, or hash..." 
+                        class="w-full theme-input border focus:border-emerald-500 rounded-lg py-2 pl-9 pr-3 text-xs outline-none">
+                </div>
+                <div>
+                    <select id="dbCategoryFilter" onchange="renderTrustedDbTable()" class="w-full theme-input border rounded-lg py-2 px-3 text-xs outline-none">
+                        <option value="ALL">All Categories</option>
+                        <option value="Operating System">Operating System</option>
+                        <option value="Developer Tools">Developer Tools</option>
+                        <option value="Security & Utilities">Security & Utilities</option>
+                        <option value="Custom">Custom Added</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Database Table -->
+            <div class="theme-card border rounded-xl overflow-hidden shadow-md">
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left text-xs theme-text-secondary">
+                        <thead class="theme-card-subtle theme-text-muted font-semibold uppercase tracking-wider border-b theme-border">
+                            <tr>
+                                <th class="p-3.5">Software / Asset</th>
+                                <th class="p-3.5">Version</th>
+                                <th class="p-3.5">Category</th>
+                                <th class="p-3.5">Hash Type</th>
+                                <th class="p-3.5">Trusted Hash Value</th>
+                                <th class="p-3.5">Vendor</th>
+                                <th class="p-3.5 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trustedDbTableBody" class="divide-y theme-border">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: TEXT / STRING HASHER -->
+        <div id="view-textHasher" class="tab-content hidden space-y-6">
+            <div class="theme-card border rounded-xl p-5 shadow-md space-y-4">
+                <h2 class="text-base font-bold theme-text-heading flex items-center space-x-2">
+                    <i class="fa-solid fa-key text-emerald-500"></i>
+                    <span>Real-time Text String Hasher & HMAC</span>
+                </h2>
+
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold theme-text-secondary">Input Raw Text</label>
+                    <textarea id="hasherInputText" oninput="calculateTextHashes()" rows="4" placeholder="Enter text, secret key, or message to compute cryptographic hashes..." 
+                        class="w-full theme-input border focus:border-emerald-500 rounded-lg p-3 text-xs font-mono outline-none"></textarea>
+                </div>
+
+                <!-- Optional Secret Key for HMAC -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-semibold theme-text-secondary">HMAC Secret Key (Optional)</label>
+                        <input type="text" id="hasherHmacKey" oninput="calculateTextHashes()" placeholder="Optional secret key for HMAC computation..." 
+                            class="w-full theme-input border focus:border-emerald-500 rounded-lg py-2 px-3 text-xs font-mono outline-none">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-semibold theme-text-secondary">Output Encoding</label>
+                        <select id="hasherEncoding" onchange="calculateTextHashes()" class="w-full theme-input border rounded-lg py-2 px-3 text-xs outline-none">
+                            <option value="HEX">Hexadecimal (Default)</option>
+                            <option value="BASE64">Base64</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Hash Results Grid -->
+                <div class="pt-2 space-y-3">
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs theme-text-muted font-semibold">
+                            <span>SHA-256</span>
+                            <button onclick="copyToClipboard('textHashSha256')" class="hover:text-emerald-500 text-xs"><i class="fa-regular fa-copy"></i> Copy</button>
+                        </div>
+                        <div id="textHashSha256" class="p-2.5 theme-code border rounded-lg text-xs font-mono text-emerald-600 dark:text-emerald-400 break-all min-h-[38px] flex items-center"></div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs theme-text-muted font-semibold">
+                            <span>SHA-512</span>
+                            <button onclick="copyToClipboard('textHashSha512')" class="hover:text-emerald-500 text-xs"><i class="fa-regular fa-copy"></i> Copy</button>
+                        </div>
+                        <div id="textHashSha512" class="p-2.5 theme-code border rounded-lg text-xs font-mono text-teal-600 dark:text-teal-400 break-all min-h-[38px] flex items-center"></div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs theme-text-muted font-semibold">
+                            <span>SHA-1</span>
+                            <button onclick="copyToClipboard('textHashSha1')" class="hover:text-emerald-500 text-xs"><i class="fa-regular fa-copy"></i> Copy</button>
+                        </div>
+                        <div id="textHashSha1" class="p-2.5 theme-code border rounded-lg text-xs font-mono text-indigo-600 dark:text-indigo-400 break-all min-h-[38px] flex items-center"></div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs theme-text-muted font-semibold">
+                            <span>MD5</span>
+                            <button onclick="copyToClipboard('textHashMd5')" class="hover:text-emerald-500 text-xs"><i class="fa-regular fa-copy"></i> Copy</button>
+                        </div>
+                        <div id="textHashMd5" class="p-2.5 theme-code border rounded-lg text-xs font-mono text-amber-600 dark:text-amber-400 break-all min-h-[38px] flex items-center"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 5: AUDIT LOGS & REPORTS -->
+        <div id="view-auditLogs" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 theme-card p-4 rounded-xl border">
+                <div>
+                    <h2 class="text-base font-bold theme-text-heading flex items-center space-x-2">
+                        <i class="fa-solid fa-clock-rotate-left text-emerald-500"></i>
+                        <span>Audit Log & Scanning Session Report</span>
+                    </h2>
+                    <p class="text-xs theme-text-muted">Historical record of file verifications run in this browser session.</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="exportAuditReport('json')" class="px-3 py-2 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-heading font-medium rounded-lg text-xs transition border flex items-center space-x-1">
+                        <i class="fa-solid fa-file-code"></i>
+                        <span>Export JSON</span>
+                    </button>
+                    <button onclick="exportAuditReport('csv')" class="px-3 py-2 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-heading font-medium rounded-lg text-xs transition border flex items-center space-x-1">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span>Export CSV</span>
+                    </button>
+                    <button onclick="clearAuditLogs()" class="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-medium rounded-lg text-xs transition border border-rose-500/30 flex items-center space-x-1">
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span>Clear Logs</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Audit Logs Table -->
+            <div class="theme-card border rounded-xl overflow-hidden shadow-md">
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left text-xs theme-text-secondary">
+                        <thead class="theme-card-subtle theme-text-muted font-semibold uppercase tracking-wider border-b theme-border">
+                            <tr>
+                                <th class="p-3.5">Timestamp</th>
+                                <th class="p-3.5">File Name</th>
+                                <th class="p-3.5">File Size</th>
+                                <th class="p-3.5">Primary Hash (SHA-256)</th>
+                                <th class="p-3.5">Verification Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditLogTableBody" class="divide-y theme-border">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ADD HASH MODAL -->
+    <div id="addHashModal" class="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="theme-card border rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+            <div class="p-5 border-b theme-border flex justify-between items-center theme-card-subtle">
+                <h3 class="text-base font-bold theme-text-heading flex items-center space-x-2">
+                    <i class="fa-solid fa-database text-emerald-500"></i>
+                    <span>Add Trusted Hash Entry</span>
+                </h3>
+                <button onclick="closeAddHashModal()" class="theme-text-muted hover:theme-text-heading"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <form onsubmit="saveNewHashEntry(event)" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold theme-text-secondary mb-1">Software / Asset Name *</label>
+                    <input type="text" id="modalName" required placeholder="e.g. Ubuntu Desktop ISO" class="w-full theme-input border rounded-lg p-2.5 text-xs outline-none focus:border-emerald-500">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold theme-text-secondary mb-1">Version</label>
+                        <input type="text" id="modalVersion" placeholder="e.g. 24.04 LTS" class="w-full theme-input border rounded-lg p-2.5 text-xs outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold theme-text-secondary mb-1">Category</label>
+                        <select id="modalCategory" class="w-full theme-input border rounded-lg p-2.5 text-xs outline-none focus:border-emerald-500">
+                            <option value="Operating System">Operating System</option>
+                            <option value="Developer Tools">Developer Tools</option>
+                            <option value="Security & Utilities">Security & Utilities</option>
+                            <option value="Custom">Custom</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold theme-text-secondary mb-1">Hash Algorithm *</label>
+                        <select id="modalAlgo" class="w-full theme-input border rounded-lg p-2.5 text-xs outline-none focus:border-emerald-500">
+                            <option value="SHA-256">SHA-256</option>
+                            <option value="SHA-512">SHA-512</option>
+                            <option value="SHA-1">SHA-1</option>
+                            <option value="MD5">MD5</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold theme-text-secondary mb-1">Vendor / Source</label>
+                        <input type="text" id="modalVendor" placeholder="e.g. Canonical Ltd." class="w-full theme-input border rounded-lg p-2.5 text-xs outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold theme-text-secondary mb-1">Expected Hash Value *</label>
+                    <textarea id="modalHash" required rows="2" placeholder="Paste full hash string..." class="w-full theme-input border rounded-lg p-2.5 text-xs font-mono text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeAddHashModal()" class="px-4 py-2 theme-card-subtle hover:bg-slate-200 dark:hover:bg-slate-700 theme-text-secondary rounded-lg text-xs font-medium transition border">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white dark:text-slate-950 rounded-lg text-xs font-bold transition">Save Signature</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast Box -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 theme-card border theme-text-primary px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-500"></i>
+        <span id="toastMessage" class="text-xs font-medium">Notification message</span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-auto theme-header border-t py-6 text-center text-xs theme-text-muted backdrop-blur transition-colors">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col items-center justify-center space-y-1.5">
+            <p class="flex items-center justify-center space-x-1.5 font-medium theme-text-secondary">
+                <span>Created with</span>
+                <i class="fa-solid fa-heart text-rose-500 animate-pulse"></i>
+                <span>by <strong class="text-emerald-500 font-semibold">Awais Khalid</strong></span>
+            </p>
+            <p class="theme-text-muted text-[11px] font-medium tracking-wide">
+                Student of <span class="theme-text-secondary font-semibold">Emerson University Multan</span>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        /* Global Application State */
+        let state = {
+            scannedFiles: [],
+            auditLogs: [],
+            trustedDatabase: [
+                {
+                    id: '1',
+                    name: 'Ubuntu Desktop ISO',
+                    version: '24.04 LTS',
+                    category: 'Operating System',
+                    algo: 'SHA-256',
+                    hash: '8710200806a33118c7ed23edb995cc7297e584f228d44e54366a7b2190892019',
+                    vendor: 'Canonical',
+                    custom: false
+                },
+                {
+                    id: '2',
+                    name: 'Node.js Windows Installer',
+                    version: 'v20.12.2 (x64)',
+                    category: 'Developer Tools',
+                    algo: 'SHA-256',
+                    hash: 'c2e4000dfb39d10ef8a09eb586ef295ed31eb96cbe4f6a73a382e7b51bfa7bd6',
+                    vendor: 'Node.js Foundation',
+                    custom: false
+                },
+                {
+                    id: '3',
+                    name: 'Python Windows Installer',
+                    version: '3.12.3 (64-bit)',
+                    category: 'Developer Tools',
+                    algo: 'SHA-256',
+                    hash: '2fb1a382cf84f3c7ef2326ef2eb8293774f1c1a2d592f1539266fbc4b25d1991',
+                    vendor: 'Python Software Foundation',
+                    custom: false
+                },
+                {
+                    id: '4',
+                    name: 'Git for Windows',
+                    version: '2.45.0 (64-bit)',
+                    category: 'Developer Tools',
+                    algo: 'SHA-256',
+                    hash: '9f23e449231f24d1084ef7bbd22ebf82b78112002341d3c016df33215aa5211d',
+                    vendor: 'Git Community',
+                    custom: false
+                },
+                {
+                    id: '5',
+                    name: '7-Zip Installer',
+                    version: '24.05 (x64)',
+                    category: 'Security & Utilities',
+                    algo: 'SHA-256',
+                    hash: '57a627a1c79a9738096f9f38f12d8a5628581e1dd796b42b6a55e2e8310cbe44',
+                    vendor: 'Igor Pavlov',
+                    custom: false
+                }
+            ]
+        };
+
+        // Initialize Application
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            loadDatabaseFromStorage();
+            renderTrustedDbTable();
+            setupDragAndDrop();
+        });
+
+        /* Theme Toggle Handler with LocalStorage Persistence */
+        function initTheme() {
+            const savedTheme = localStorage.getItem('integrityGuard_theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'light') {
+                document.documentElement.classList.remove('dark');
+                updateThemeToggleIcon(false);
+            } else if (savedTheme === 'dark' || prefersDark) {
+                document.documentElement.classList.add('dark');
+                updateThemeToggleIcon(true);
+            } else {
+                document.documentElement.classList.add('dark');
+                updateThemeToggleIcon(true);
+            }
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('integrityGuard_theme', isDark ? 'dark' : 'light');
+            updateThemeToggleIcon(isDark);
+            showToast(`Switched to ${isDark ? 'Dark' : 'Light'} Mode`, "info");
+        }
+
+        function updateThemeToggleIcon(isDark) {
+            const btn = document.getElementById('themeToggleBtn');
+            if (!btn) return;
+            if (isDark) {
+                btn.innerHTML = '<i class="fa-solid fa-sun text-base text-amber-400"></i>';
+                btn.title = 'Switch to Light Theme';
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-moon text-base text-slate-700"></i>';
+                btn.title = 'Switch to Dark Theme';
+            }
+        }
+
+        /* Tab Navigation Switcher */
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-tab').forEach(el => {
+                el.classList.remove('bg-emerald-600/10', 'text-emerald-400', 'border-emerald-500/30');
+                el.classList.add('text-slate-400', 'border-transparent');
+            });
+
+            const targetView = document.getElementById(`view-${tabId}`);
+            const targetTab = document.getElementById(`tab-${tabId}`);
+
+            if (targetView && targetTab) {
+                targetView.classList.remove('hidden');
+                targetTab.classList.add('bg-emerald-600/10', 'text-emerald-400', 'border-emerald-500/30');
+                targetTab.classList.remove('text-slate-400', 'border-transparent');
+            }
+        }
+
+        /* Toast Notifications */
+        function showToast(msg, type = "success") {
+            const toast = document.getElementById('toastNotification');
+            const icon = document.getElementById('toastIcon');
+            const message = document.getElementById('toastMessage');
+
+            message.textContent = msg;
+            if (type === "success") {
+                icon.className = "fa-solid fa-circle-check text-emerald-400";
+            } else if (type === "warning") {
+                icon.className = "fa-solid fa-triangle-exclamation text-amber-400";
+            } else if (type === "error") {
+                icon.className = "fa-solid fa-circle-xmark text-rose-400";
+            } else {
+                icon.className = "fa-solid fa-circle-info text-sky-400";
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        /* Drag & Drop Setup */
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('border-emerald-500', 'bg-emerald-500/10'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('border-emerald-500', 'bg-emerald-500/10'), false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    processUploadedFiles(Array.from(files));
+                }
+            });
+        }
+
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            if (files.length > 0) {
+                processUploadedFiles(files);
+            }
+        }
+
+        /* Core Chunked Hash Engine */
+        async function processUploadedFiles(files) {
+            document.getElementById('emptyResultsState')?.classList.add('hidden');
+
+            for (const file of files) {
+                const fileId = 'file_' + Math.random().toString(36).substring(2, 9);
+                const fileObj = {
+                    id: fileId,
+                    file: file,
+                    name: file.name,
+                    size: file.size,
+                    status: 'processing',
+                    progress: 0,
+                    hashes: {},
+                    verification: null
+                };
+
+                state.scannedFiles.unshift(fileObj);
+                renderFileCard(fileObj);
+                updateScanBadge();
+
+                // Start async computation
+                await computeFileHashes(fileObj);
+            }
+        }
+
+        async function computeFileHashes(fileObj) {
+            const file = fileObj.file;
+            const chunkSize = 2 * 1024 * 1024; // 2MB chunks
+            const chunks = Math.ceil(file.size / chunkSize);
+
+            const calcSha256 = document.getElementById('algo-sha256').checked;
+            const calcSha512 = document.getElementById('algo-sha512').checked;
+            const calcSha1 = document.getElementById('algo-sha1').checked;
+            const calcMd5 = document.getElementById('algo-md5').checked;
+
+            // CryptoJS Incremental Algo Instances
+            let md5Algo = calcMd5 ? CryptoJS.algo.MD5.create() : null;
+            let sha1Algo = calcSha1 ? CryptoJS.algo.SHA1.create() : null;
+
+            // Web Crypto Subtle Digest for SHA-256 and SHA-512 (Fast Native)
+            let sha256Buffer = null;
+            let sha512Buffer = null;
+
+            try {
+                if (window.crypto && window.crypto.subtle && (calcSha256 || calcSha512)) {
+                    // Read full arrayBuffer or read in chunks
+                    let currentOffset = 0;
+
+                    for (let i = 0; i < chunks; i++) {
+                        const slice = file.slice(currentOffset, currentOffset + chunkSize);
+                        const arrayBuffer = await slice.arrayBuffer();
+
+                        if (calcMd5 || calcSha1) {
+                            const wordBuffer = CryptoJS.lib.WordArray.create(arrayBuffer);
+                            if (calcMd5) md5Algo.update(wordBuffer);
+                            if (calcSha1) sha1Algo.update(wordBuffer);
+                        }
+
+                        currentOffset += chunkSize;
+                        fileObj.progress = Math.min(100, Math.round((i + 1) / chunks * 100));
+                        updateFileProgressUI(fileObj.id, fileObj.progress);
+                    }
+
+                    // Native WebCrypto full buffer pass for SHA-256 / SHA-512
+                    const fullArrayBuffer = await file.arrayBuffer();
+                    if (calcSha256) {
+                        const hashBuffer = await crypto.subtle.digest('SHA-256', fullArrayBuffer);
+                        fileObj.hashes['SHA-256'] = bufferToHex(hashBuffer);
+                    }
+                    if (calcSha512) {
+                        const hashBuffer = await crypto.subtle.digest('SHA-512', fullArrayBuffer);
+                        fileObj.hashes['SHA-512'] = bufferToHex(hashBuffer);
+                    }
+
+                } else {
+                    // Fallback to CryptoJS for all
+                    let currentOffset = 0;
+                    for (let i = 0; i < chunks; i++) {
+                        const slice = file.slice(currentOffset, currentOffset + chunkSize);
+                        const arrayBuffer = await slice.arrayBuffer();
+                        const wordBuffer = CryptoJS.lib.WordArray.create(arrayBuffer);
+
+                        if (calcMd5) md5Algo.update(wordBuffer);
+                        if (calcSha1) sha1Algo.update(wordBuffer);
+
+                        currentOffset += chunkSize;
+                        fileObj.progress = Math.min(100, Math.round((i + 1) / chunks * 100));
+                        updateFileProgressUI(fileObj.id, fileObj.progress);
+                    }
+                }
+
+                if (calcMd5) fileObj.hashes['MD5'] = md5Algo.finalize().toString().toLowerCase();
+                if (calcSha1) fileObj.hashes['SHA-1'] = sha1Algo.finalize().toString().toLowerCase();
+
+                fileObj.status = 'completed';
+                evaluateIntegrityMatch(fileObj);
+
+            } catch (error) {
+                console.error("Hashing error:", error);
+                fileObj.status = 'error';
+                updateFileCardErrorUI(fileObj.id, error.message);
+            }
+        }
+
+        function bufferToHex(buffer) {
+            return Array.from(new Uint8Array(buffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+        }
+
+        /* Evaluate Match Against Trusted DB & Quick Compare String */
+        function evaluateIntegrityMatch(fileObj) {
+            const expectedHash = document.getElementById('expectedHashInput').value.trim().toLowerCase();
+            let matchedDbEntry = null;
+            let quickMatchFound = false;
+
+            // 1. Check against User Expected Input Hash
+            if (expectedHash) {
+                for (let algo in fileObj.hashes) {
+                    if (fileObj.hashes[algo].toLowerCase() === expectedHash) {
+                        quickMatchFound = true;
+                        break;
+                    }
+                }
+            }
+
+            // 2. Check against Trusted Database
+            for (let dbEntry of state.trustedDatabase) {
+                const dbHash = dbEntry.hash.trim().toLowerCase();
+                for (let algo in fileObj.hashes) {
+                    if (fileObj.hashes[algo].toLowerCase() === dbHash) {
+                        matchedDbEntry = dbEntry;
+                        break;
+                    }
+                }
+                if (matchedDbEntry) break;
+            }
+
+            fileObj.verification = {
+                quickMatch: quickMatchFound,
+                matchedDbEntry: matchedDbEntry,
+                expectedHash: expectedHash
+            };
+
+            // Log into Audit Trail
+            addAuditLog(fileObj);
+
+            // Update UI
+            renderFileCardCompleted(fileObj);
+        }
+
+        function clearExpectedHash() {
+            document.getElementById('expectedHashInput').value = '';
+            showToast("Expected hash cleared", "info");
+        }
+
+        /* Render File Cards */
+        function renderFileCard(fileObj) {
+            const container = document.getElementById('fileResultsContainer');
+            const card = document.createElement('div');
+            card.id = `card-${fileObj.id}`;
+            card.className = "theme-card border rounded-xl p-4 sm:p-5 shadow-md space-y-3 transition-all";
+
+            card.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3 overflow-hidden">
+                        <div class="w-10 h-10 rounded-lg theme-card-subtle border flex items-center justify-center theme-text-secondary text-lg flex-shrink-0">
+                            <i class="fa-solid fa-file font-mono"></i>
+                        </div>
+                        <div class="truncate">
+                            <h4 class="text-sm font-bold theme-text-heading truncate">${escapeHtml(fileObj.name)}</h4>
+                            <span class="text-xs theme-text-muted">${formatBytes(fileObj.size)}</span>
+                        </div>
+                    </div>
+                    <div id="statusBadge-${fileObj.id}">
+                        <span class="px-2.5 py-1 text-xs font-semibold rounded-full theme-card-subtle theme-text-secondary border flex items-center space-x-1.5">
+                            <i class="fa-solid fa-spinner animate-spin text-emerald-500"></i>
+                            <span>Hashing...</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div id="progressBox-${fileObj.id}" class="space-y-1">
+                    <div class="w-full theme-code rounded-full h-2 overflow-hidden border">
+                        <div id="progressBar-${fileObj.id}" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full transition-all duration-150" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] theme-text-muted font-mono">
+                        <span>Chunk processing</span>
+                        <span id="progressPercent-${fileObj.id}">0%</span>
+                    </div>
+                </div>
+
+                <div id="hashesOutput-${fileObj.id}" class="hidden space-y-2 pt-2 border-t theme-border"></div>
+            `;
+
+            container.prepend(card);
+        }
+
+        function updateFileProgressUI(id, percent) {
+            const bar = document.getElementById(`progressBar-${id}`);
+            const text = document.getElementById(`progressPercent-${id}`);
+            if (bar && text) {
+                bar.style.width = `${percent}%`;
+                text.textContent = `${percent}%`;
+            }
+        }
+
+        function renderFileCardCompleted(fileObj) {
+            const badgeBox = document.getElementById(`statusBadge-${fileObj.id}`);
+            const progressBox = document.getElementById(`progressBox-${fileObj.id}`);
+            const hashesOutput = document.getElementById(`hashesOutput-${fileObj.id}`);
+
+            if (progressBox) progressBox.classList.add('hidden');
+
+            const ver = fileObj.verification;
+
+            // Set Status Badge
+            if (ver.matchedDbEntry) {
+                badgeBox.innerHTML = `
+                    <span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-shield-check text-emerald-500"></i>
+                        <span>MATCHED: ${escapeHtml(ver.matchedDbEntry.name)}</span>
+                    </span>
+                `;
+            } else if (ver.quickMatch) {
+                badgeBox.innerHTML = `
+                    <span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-circle-check text-emerald-500"></i>
+                        <span>EXPECTED HASH MATCH</span>
+                    </span>
+                `;
+            } else if (ver.expectedHash) {
+                badgeBox.innerHTML = `
+                    <span class="px-3 py-1 text-xs font-bold rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-500/30 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-triangle-exclamation text-rose-500"></i>
+                        <span>HASH MISMATCH</span>
+                    </span>
+                `;
+            } else {
+                badgeBox.innerHTML = `
+                    <span class="px-3 py-1 text-xs font-medium rounded-full theme-card-subtle theme-text-secondary border flex items-center space-x-1.5">
+                        <i class="fa-solid fa-info-circle text-sky-500"></i>
+                        <span>COMPUTED (UNVERIFIED)</span>
+                    </span>
+                `;
+            }
+
+            // Render Hashes List
+            let hashesHtml = '';
+            for (let [algo, val] of Object.entries(fileObj.hashes)) {
+                hashesHtml += `
+                    <div class="theme-code p-2.5 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span class="text-[11px] font-bold theme-text-muted uppercase tracking-wider w-20">${algo}</span>
+                        <code class="text-xs font-mono text-emerald-600 dark:text-emerald-400 break-all select-all flex-grow">${val}</code>
+                        <button onclick="copyString('${val}')" class="text-xs theme-text-secondary hover:text-emerald-500 px-2 py-1 theme-card hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition border flex items-center space-x-1 self-start sm:self-auto">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>Copy</span>
+                        </button>
+                    </div>
+                `;
+            }
+
+            hashesOutput.innerHTML = hashesHtml;
+            hashesOutput.classList.remove('hidden');
+        }
+
+        function updateFileCardErrorUI(id, errMsg) {
+            const badgeBox = document.getElementById(`statusBadge-${id}`);
+            if (badgeBox) {
+                badgeBox.innerHTML = `
+                    <span class="px-3 py-1 text-xs font-bold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                        Error: ${escapeHtml(errMsg)}
+                    </span>
+                `;
+            }
+        }
+
+        function clearScanResults() {
+            state.scannedFiles = [];
+            document.getElementById('fileResultsContainer').innerHTML = `
+                <div id="emptyResultsState" class="text-center py-12 bg-slate-800/30 rounded-xl border border-slate-800 text-slate-500">
+                    <i class="fa-solid fa-file-circle-question text-4xl mb-3 text-slate-600"></i>
+                    <p class="text-sm">No files uploaded yet. Select or drop files above to verify integrity.</p>
+                </div>
+            `;
+            updateScanBadge();
+            showToast("Scan results cleared", "info");
+        }
+
+        function updateScanBadge() {
+            const badge = document.getElementById('scanCountBadge');
+            badge.textContent = state.scannedFiles.length;
+            if (state.scannedFiles.length > 0) {
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        /* Direct Comparator logic */
+        let comparatorData = {
+            hashA: '',
+            hashB: ''
+        };
+
+        async function processComparatorItem(target) {
+            const fileInput = document.getElementById(`compFile${target}`);
+            const label = document.getElementById(`compFile${target}Label`);
+            const hashTextarea = document.getElementById(`compHash${target}`);
+
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                label.textContent = file.name;
+                hashTextarea.value = "Computing SHA-256...";
+
+                const buffer = await file.arrayBuffer();
+                const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+                const hex = bufferToHex(hashBuffer);
+
+                hashTextarea.value = hex;
+                runDirectComparison();
+            }
+        }
+
+        function runDirectComparison() {
+            const hashA = document.getElementById('compHashA').value.trim().toLowerCase();
+            const hashB = document.getElementById('compHashB').value.trim().toLowerCase();
+            const box = document.getElementById('comparisonResultBox');
+
+            if (!hashA || !hashB) {
+                box.className = "mt-6 p-5 rounded-xl border border-slate-800 bg-slate-900/50 text-center";
+                box.innerHTML = `
+                    <i class="fa-solid fa-scale-balanced text-3xl text-slate-600 mb-2"></i>
+                    <p class="text-sm text-slate-400">Enter or select items in Target A and Target B to compare integrity signatures.</p>
+                `;
+                return;
+            }
+
+            if (hashA === hashB) {
+                box.className = "mt-6 p-5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-center text-emerald-300";
+                box.innerHTML = `
+                    <i class="fa-solid fa-circle-check text-4xl text-emerald-400 mb-2"></i>
+                    <h3 class="text-base font-bold">MATCH CONFIRMED!</h3>
+                    <p class="text-xs text-emerald-200 mt-1">Both cryptographic signatures are identical. File integrity is verified.</p>
+                `;
+            } else {
+                box.className = "mt-6 p-5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-center text-rose-300";
+                box.innerHTML = `
+                    <i class="fa-solid fa-triangle-exclamation text-4xl text-rose-400 mb-2"></i>
+                    <h3 class="text-base font-bold">MISMATCH DETECTED!</h3>
+                    <p class="text-xs text-rose-200 mt-1">Signatures do NOT match. The files or checksum strings differ.</p>
+                `;
+            }
+        }
+
+        /* Trusted Database Table Operations */
+        function renderTrustedDbTable() {
+            const tbody = document.getElementById('trustedDbTableBody');
+            const search = document.getElementById('dbSearchInput').value.toLowerCase();
+            const cat = document.getElementById('dbCategoryFilter').value;
+
+            const filtered = state.trustedDatabase.filter(item => {
+                const matchesSearch = item.name.toLowerCase().includes(search) ||
+                                      item.version.toLowerCase().includes(search) ||
+                                      item.hash.toLowerCase().includes(search) ||
+                                      item.vendor.toLowerCase().includes(search);
+                const matchesCat = (cat === 'ALL') || (item.category === cat);
+                return matchesSearch && matchesCat;
+            });
+
+            document.getElementById('dbCountBadge').textContent = state.trustedDatabase.length;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="p-8 text-center theme-text-muted">
+                            No trusted hash signatures found matching current filters.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(item => `
+                <tr class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition">
+                    <td class="p-3.5 font-bold theme-text-heading">${escapeHtml(item.name)}</td>
+                    <td class="p-3.5 theme-text-muted">${escapeHtml(item.version)}</td>
+                    <td class="p-3.5">
+                        <span class="px-2 py-0.5 text-[10px] rounded theme-card-subtle theme-text-secondary border">
+                            ${escapeHtml(item.category)}
+                        </span>
+                    </td>
+                    <td class="p-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-semibold">${escapeHtml(item.algo)}</td>
+                    <td class="p-3.5 font-mono theme-text-secondary max-w-xs truncate" title="${escapeHtml(item.hash)}">${escapeHtml(item.hash)}</td>
+                    <td class="p-3.5 theme-text-muted">${escapeHtml(item.vendor)}</td>
+                    <td class="p-3.5 text-right space-x-1">
+                        <button onclick="copyString('${item.hash}')" class="p-1.5 theme-text-muted hover:text-emerald-500 transition" title="Copy Hash">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                        <button onclick="deleteDbEntry('${item.id}')" class="p-1.5 theme-text-muted hover:text-rose-500 transition" title="Delete Signature">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openAddHashModal() {
+            document.getElementById('addHashModal').classList.remove('hidden');
+        }
+
+        function closeAddHashModal() {
+            document.getElementById('addHashModal').classList.add('hidden');
+        }
+
+        function saveNewHashEntry(e) {
+            e.preventDefault();
+            const entry = {
+                id: Math.random().toString(36).substring(2, 9),
+                name: document.getElementById('modalName').value.trim(),
+                version: document.getElementById('modalVersion').value.trim() || 'N/A',
+                category: document.getElementById('modalCategory').value,
+                algo: document.getElementById('modalAlgo').value,
+                hash: document.getElementById('modalHash').value.trim().toLowerCase(),
+                vendor: document.getElementById('modalVendor').value.trim() || 'Custom Source',
+                custom: true
+            };
+
+            state.trustedDatabase.unshift(entry);
+            saveDatabaseToStorage();
+            renderTrustedDbTable();
+            closeAddHashModal();
+            showToast("New trusted hash entry added!", "success");
+        }
+
+        function deleteDbEntry(id) {
+            state.trustedDatabase = state.trustedDatabase.filter(x => x.id !== id);
+            saveDatabaseToStorage();
+            renderTrustedDbTable();
+            showToast("Hash entry deleted", "info");
+        }
+
+        function saveDatabaseToStorage() {
+            try {
+                localStorage.setItem('integrityGuard_db', JSON.stringify(state.trustedDatabase));
+            } catch (e) {
+                console.warn("LocalStorage save error", e);
+            }
+        }
+
+        function loadDatabaseFromStorage() {
+            try {
+                const data = localStorage.getItem('integrityGuard_db');
+                if (data) {
+                    state.trustedDatabase = JSON.parse(data);
+                }
+            } catch (e) {
+                console.warn("LocalStorage read error", e);
+            }
+        }
+
+        function exportTrustedDb() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.trustedDatabase, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", `trusted_hashes_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            showToast("Trusted database exported", "success");
+        }
+
+        function importTrustedDb(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const imported = JSON.parse(evt.target.result);
+                    if (Array.isArray(imported)) {
+                        state.trustedDatabase = imported;
+                        saveDatabaseToStorage();
+                        renderTrustedDbTable();
+                        showToast(`Successfully imported ${imported.length} signatures!`, "success");
+                    }
+                } catch (err) {
+                    showToast("Failed to parse JSON database file", "error");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        /* Text String Hasher Operations */
+        function calculateTextHashes() {
+            const text = document.getElementById('hasherInputText').value;
+            const key = document.getElementById('hasherHmacKey').value;
+            const encoding = document.getElementById('hasherEncoding').value;
+
+            if (!text) {
+                ['Sha256', 'Sha512', 'Sha1', 'Md5'].forEach(algo => {
+                    document.getElementById(`textHash${algo}`).textContent = '';
+                });
+                return;
+            }
+
+            let sha256Res, sha512Res, sha1Res, md5Res;
+
+            if (key) {
+                // HMAC
+                sha256Res = CryptoJS.HmacSHA256(text, key);
+                sha512Res = CryptoJS.HmacSHA512(text, key);
+                sha1Res = CryptoJS.HmacSHA1(text, key);
+                md5Res = CryptoJS.HmacMD5(text, key);
+            } else {
+                // Normal
+                sha256Res = CryptoJS.SHA256(text);
+                sha512Res = CryptoJS.SHA512(text);
+                sha1Res = CryptoJS.SHA1(text);
+                md5Res = CryptoJS.MD5(text);
+            }
+
+            const format = (res) => encoding === 'BASE64' ? res.toString(CryptoJS.enc.Base64) : res.toString().toLowerCase();
+
+            document.getElementById('textHashSha256').textContent = format(sha256Res);
+            document.getElementById('textHashSha512').textContent = format(sha512Res);
+            document.getElementById('textHashSha1').textContent = format(sha1Res);
+            document.getElementById('textHashMd5').textContent = format(md5Res);
+        }
+
+        /* Audit Logs Operations */
+        function addAuditLog(fileObj) {
+            const logEntry = {
+                timestamp: new Date().toLocaleString(),
+                name: fileObj.name,
+                size: formatBytes(fileObj.size),
+                sha256: fileObj.hashes['SHA-256'] || 'N/A',
+                status: fileObj.verification.matchedDbEntry ? `MATCH: ${fileObj.verification.matchedDbEntry.name}` :
+                        fileObj.verification.quickMatch ? 'EXPECTED MATCH' :
+                        fileObj.verification.expectedHash ? 'MISMATCH' : 'UNVERIFIED'
+            };
+
+            state.auditLogs.unshift(logEntry);
+            renderAuditLogs();
+        }
+
+        function renderAuditLogs() {
+            const tbody = document.getElementById('auditLogTableBody');
+            if (state.auditLogs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="p-8 text-center theme-text-muted">
+                            No verification audit logs recorded in this session.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = state.auditLogs.map(log => `
+                <tr class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition">
+                    <td class="p-3.5 theme-text-muted font-mono">${log.timestamp}</td>
+                    <td class="p-3.5 font-bold theme-text-heading">${escapeHtml(log.name)}</td>
+                    <td class="p-3.5 theme-text-muted">${log.size}</td>
+                    <td class="p-3.5 font-mono text-emerald-600 dark:text-emerald-400 truncate max-w-xs">${log.sha256}</td>
+                    <td class="p-3.5 font-semibold">
+                        <span class="px-2 py-0.5 text-[10px] rounded ${
+                            log.status.includes('MATCH') ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30' :
+                            log.status.includes('MISMATCH') ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-500/30' :
+                            'theme-card-subtle theme-text-secondary border'
+                        }">
+                            ${log.status}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function clearAuditLogs() {
+            state.auditLogs = [];
+            renderAuditLogs();
+            showToast("Audit logs cleared", "info");
+        }
+
+        function exportAuditReport(format) {
+            if (state.auditLogs.length === 0) {
+                showToast("No audit logs to export", "warning");
+                return;
+            }
+
+            let fileContent = "";
+            let mimeType = "";
+            let fileName = `integrity_audit_report_${new Date().toISOString().slice(0,10)}`;
+
+            if (format === 'json') {
+                fileContent = JSON.stringify(state.auditLogs, null, 2);
+                mimeType = "data:text/json;charset=utf-8,";
+                fileName += ".json";
+            } else {
+                // CSV
+                const headers = ["Timestamp", "File Name", "File Size", "SHA-256 Hash", "Status"];
+                const rows = state.auditLogs.map(l => [`"${l.timestamp}"`, `"${l.name}"`, `"${l.size}"`, `"${l.sha256}"`, `"${l.status}"`]);
+                fileContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                mimeType = "data:text/csv;charset=utf-8,";
+                fileName += ".csv";
+            }
+
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", mimeType + encodeURIComponent(fileContent));
+            dlAnchor.setAttribute("download", fileName);
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            showToast(`Exported report as ${format.toUpperCase()}`, "success");
+        }
+
+        /* Helper Utilities */
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            if (text) copyString(text);
+        }
+
+        function copyString(str) {
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast("Copied to clipboard!", "success");
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
